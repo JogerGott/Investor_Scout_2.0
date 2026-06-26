@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Any
+from typing import List, Any, Optional
 
 @dataclass
 class User:
@@ -8,6 +8,7 @@ class User:
     last_name: str
     email: str
     password_hash: str
+    telephone: Optional[str] = None
     portfolios: List[Any] = field(default_factory=list) # List of Portfolio objects
 
     def get_total_net_worth(self) -> float:

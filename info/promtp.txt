@@ -1,0 +1,630 @@
+# PROMPT – Sistema de Sincronización de Yahoo Finance para Portfolio Analyzer
+
+## Contexto
+
+Estoy desarrollando un sistema profesional de análisis y gestión de portafolios de inversión.
+
+La base de datos MySQL ya se encuentra completamente diseñada y normalizada. El sistema debe consumir datos de Yahoo Finance, transformarlos al modelo de datos interno, calcular las métricas que Yahoo Finance no proporciona y almacenar toda la información preservando el histórico.
+
+El objetivo es construir un **módulo ETL (Extract → Transform → Load)** robusto, desacoplado y escalable.
+
+El código debe seguir principios SOLID, Clean Architecture y separación de responsabilidades.
+
+No deseo un script monolítico.
+
+Debe implementarse una arquitectura orientada a servicios.
+
+---
+
+# OBJETIVO
+
+Diseñar e implementar un sistema capaz de:
+
+1. Consultar Yahoo Finance.
+2. Obtener toda la información disponible para un activo.
+3. Transformar los datos al modelo interno.
+4. Calcular las métricas financieras que Yahoo no provee.
+5. Insertar o actualizar correctamente la base de datos.
+6. Mantener el histórico de información.
+7. Evitar duplicados.
+8. Permitir futuras fuentes de datos distintas de Yahoo Finance.
+
+---
+
+# REQUISITOS DE ARQUITECTURA
+
+La solución debe estar dividida en módulos independientes.
+
+Ejemplo:
+
+```
+YahooFinanceService
+        │
+        ▼
+FinancialMapper
+        │
+        ▼
+FinancialCalculator
+        │
+        ▼
+Repositories
+        │
+        ▼
+MySQL
+```
+
+Cada módulo debe tener una única responsabilidad.
+
+---
+
+# ETAPA 1 — EXTRACCIÓN
+
+Crear un servicio denominado:
+
+```
+YahooFinanceService
+```
+
+Responsabilidades:
+
+* consultar Yahoo Finance
+* descargar información de un ticker
+* descargar históricos
+* descargar estados financieros
+* descargar métricas
+* descargar información general
+
+Este servicio NO debe conocer la base de datos.
+
+Debe únicamente devolver objetos de dominio.
+
+---
+
+Debe poder descargar:
+
+## Información del activo
+
+Ticker
+
+Nombre
+
+Tipo
+
+Exchange
+
+Currency
+
+Timezone
+
+ISIN (si existe)
+
+Country
+
+---
+
+## Información específica de Equity
+
+Sector
+
+Industry
+
+Next Earnings Date
+
+Employees (si existe)
+
+Website
+
+Business Summary
+
+---
+
+## Histórico OHLCV
+
+Fecha
+
+Open
+
+High
+
+Low
+
+Close
+
+Adjusted Close
+
+Volume
+
+---
+
+## Market Metrics
+
+Precio actual
+
+Market Cap
+
+Enterprise Value
+
+Trailing PE
+
+Forward PE
+
+Price Book
+
+Price Sales
+
+PEG
+
+Dividend Yield
+
+Beta
+
+---
+
+## Income Statement
+
+Revenue
+
+Cost of Revenue
+
+Gross Profit
+
+Operating Expenses
+
+Operating Income
+
+Net Income
+
+EBITDA
+
+Shares Outstanding
+
+---
+
+## Balance Sheet
+
+Assets
+
+Liabilities
+
+Equity
+
+Cash
+
+Debt
+
+Current Assets
+
+Current Liabilities
+
+---
+
+## Cash Flow
+
+Operating Cash Flow
+
+Investing Cash Flow
+
+Financing Cash Flow
+
+Free Cash Flow
+
+Capital Expenditures
+
+---
+
+# ETAPA 2 — TRANSFORMACIÓN
+
+Yahoo Finance utiliza nombres distintos a la base de datos.
+
+Crear un módulo:
+
+```
+FinancialMapper
+```
+
+Responsabilidades:
+
+Convertir
+
+```
+marketCap
+```
+
+en
+
+```
+market_cap
+```
+
+Convertir
+
+```
+trailingPE
+```
+
+en
+
+```
+pe_ratio
+```
+
+etc.
+
+Toda conversión debe ocurrir aquí.
+
+Nunca en el Repository.
+
+Nunca en el Service.
+
+---
+
+Debe convertir:
+
+tipos
+
+fechas
+
+monedas
+
+decimales
+
+valores nulos
+
+booleanos
+
+enumeraciones
+
+---
+
+# ETAPA 3 — CÁLCULO
+
+Crear un módulo independiente
+
+```
+FinancialCalculator
+```
+
+Este módulo debe calcular todos los indicadores que Yahoo Finance NO entrega.
+
+NO debe consultar Yahoo.
+
+Debe utilizar exclusivamente la información almacenada.
+
+Calcular:
+
+## Asset Turnover
+
+Revenue
+
+/
+
+Average Total Assets
+
+---
+
+## Interest Coverage Ratio
+
+EBIT
+
+/
+
+Interest Expense
+
+---
+
+## Free Cash Flow Yield
+
+Free Cash Flow
+
+/
+
+Market Cap
+
+---
+
+## Revenue Growth
+
+(Current Revenue - Previous Revenue)
+
+/
+
+Previous Revenue
+
+---
+
+## EPS Growth
+
+(Current EPS - Previous EPS)
+
+/
+
+Previous EPS
+
+---
+
+## ROIC
+
+NOPAT
+
+/
+
+Invested Capital
+
+---
+
+Si alguna métrica no puede calcularse por falta de información:
+
+guardar NULL
+
+nunca inventar valores
+
+---
+
+# ETAPA 4 — PERSISTENCIA
+
+Crear Repositories independientes.
+
+Ejemplo
+
+```
+ActivoRepository
+
+HistoricoRepository
+
+MarketMetricsRepository
+
+IncomeRepository
+
+BalanceRepository
+
+CashFlowRepository
+
+RatiosRepository
+```
+
+Cada Repository conoce únicamente una tabla.
+
+Nunca dos.
+
+---
+
+Debe utilizar
+
+INSERT
+
+cuando el registro no exista.
+
+Debe utilizar
+
+UPSERT
+
+cuando exista una restricción UNIQUE.
+
+Ejemplo
+
+```
+UNIQUE(id_activo,fecha)
+```
+
+Debe utilizar
+
+```
+INSERT ...
+
+ON DUPLICATE KEY UPDATE
+```
+
+o la estrategia equivalente.
+
+---
+
+# TABLAS A LLENAR
+
+activo
+
+equity
+
+bond
+
+historico
+
+metricas_mercado
+
+estado_resultados
+
+balance_general
+
+flujo_caja
+
+ratios_financieros
+
+---
+
+NO modificar
+
+movimiento
+
+posicion
+
+snapshot_posicion
+
+snapshot_portafolio
+
+metricas_portafolio
+
+Estas tablas pertenecen exclusivamente al sistema del usuario.
+
+---
+
+# HISTÓRICO
+
+Nunca sobrescribir información histórica.
+
+Si existe
+
+```
+UNIQUE(id_activo,periodo)
+```
+
+actualizar únicamente si Yahoo Finance devuelve una versión más reciente del mismo período.
+
+Nunca eliminar registros.
+
+---
+
+# SINCRONIZACIÓN
+
+Implementar tres tipos.
+
+## Sincronización Inicial
+
+Cuando un activo no existe.
+
+Debe descargar todo el historial.
+
+Toda la información financiera.
+
+Todo el histórico de precios.
+
+Toda la información general.
+
+---
+
+## Sincronización Diaria
+
+Actualizar
+
+Precio
+
+Market Metrics
+
+Histórico diario
+
+Dividend Yield
+
+Beta
+
+PE
+
+etc.
+
+---
+
+## Sincronización Trimestral
+
+Actualizar
+
+Income Statement
+
+Balance Sheet
+
+Cash Flow
+
+Ratios
+
+---
+
+# VALIDACIONES
+
+Antes de insertar
+
+verificar que el activo exista.
+
+Si no existe
+
+crearlo.
+
+---
+
+Validar
+
+Ticker
+
+Fechas
+
+Duplicados
+
+Valores NULL
+
+Tipos numéricos
+
+---
+
+# LOGGING
+
+Registrar
+
+Inicio de sincronización
+
+Activo sincronizado
+
+Errores
+
+Cantidad de registros insertados
+
+Cantidad de registros actualizados
+
+Tiempo empleado
+
+---
+
+# MANEJO DE ERRORES
+
+Si Yahoo Finance no responde
+
+reintentar
+
+hasta un máximo configurable.
+
+Registrar el error.
+
+Continuar con el siguiente activo.
+
+Nunca detener toda la sincronización.
+
+---
+
+# ESCALABILIDAD
+
+La arquitectura debe permitir reemplazar Yahoo Finance por otra fuente.
+
+Ejemplo
+
+```
+YahooFinanceProvider
+
+PolygonProvider
+
+FinnhubProvider
+
+AlphaVantageProvider
+```
+
+Todos implementando una interfaz común.
+
+El resto del sistema no debe cambiar.
+
+---
+
+# RESULTADO ESPERADO
+
+Generar una solución completa que incluya:
+
+* Arquitectura de carpetas.
+* Clases.
+* Interfaces.
+* Modelos de dominio.
+* DTOs.
+* Mappers.
+* Calculadoras financieras.
+* Repositories.
+* Casos de uso.
+* Flujo completo de sincronización.
+* Manejo de errores.
+* Logging.
+* Configuración.
+* Estrategia de actualización incremental.
+* Buenas prácticas de rendimiento.
+* Código limpio y desacoplado.
+
+El resultado debe ser apto para un sistema de producción y permitir el crecimiento futuro del proyecto sin necesidad de rediseñar la arquitectura.
